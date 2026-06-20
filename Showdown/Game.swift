@@ -16,6 +16,10 @@ enum Phase {
     case lost
 }
 
+enum GameMode {
+    case regular, endless
+}
+
 // MARK: - Upgrades
 
 /// A between-wave upgrade the player can pick. Closure-based so the model stays Foundation-only.
@@ -80,6 +84,14 @@ final class GameState: ObservableObject {
     static let skipGain = 3
     static let totalWaves = 3
 
+    // Persisted Endless high score (best number of waves cleared).
+    private static let endlessHighScoreKey = "endlessHighScore"
+    static var endlessHighScore: Int {
+        UserDefaults.standard.integer(forKey: endlessHighScoreKey)
+    }
+
+    let mode: GameMode
+
     // Instance so it can be lowered by an upgrade.
     @Published private(set) var attackCost = 2
 
@@ -87,6 +99,9 @@ final class GameState: ObservableObject {
     @Published private(set) var enemies: [Combatant] = []
     @Published private(set) var wave: Int = 1
     @Published private(set) var phase: Phase = .playerTurn
+
+    // Number of waves fully cleared (the Endless score).
+    @Published private(set) var score: Int = 0
 
     // The 3 upgrades offered between waves (populated when phase == .choosingUpgrade).
     @Published private(set) var offeredUpgrades: [Upgrade] = []
@@ -103,7 +118,8 @@ final class GameState: ObservableObject {
     // The cells the last thrown shuriken traveled between (from player, to target/wall).
     @Published private(set) var lastThrow: (from: Int, to: Int)? = nil
 
-    init() {
+    init(mode: GameMode = .regular) {
+        self.mode = mode
         player = GameState.makePlayer()
         spawnWave()
     }
@@ -143,7 +159,10 @@ final class GameState: ObservableObject {
         switch wave {
         case 1:  kinds = [.grunt, .grunt]
         case 2:  kinds = [.grunt, .grunt, .brute, .runner]
-        default: kinds = [.grunt, .brute, .runner, .archer]
+        case 3:  kinds = [.grunt, .brute, .runner, .archer]
+        default:
+            // Endless past wave 3: keep ramping. Regular never reaches here (it wins at wave 3).
+            kinds = GameState.endlessKinds(for: wave)
         }
 
         // Pack against the right wall (rightmost first) without overlapping.
@@ -154,13 +173,39 @@ final class GameState: ObservableObject {
             newEnemies.append(GameState.makeEnemy(kind: kind, position: pos))
         }
         enemies = newEnemies
-        message = "Wave \(wave) of \(GameState.totalWaves)"
+        message = mode == .endless
+            ? "Wave \(wave)"
+            : "Wave \(wave) of \(GameState.totalWaves)"
+    }
+
+    /// Endless difficulty curve for waves > 3: grow the count and weight toward
+    /// tougher kinds (brute/archer) as the wave climbs, capped so they fit the arena.
+    private static func endlessKinds(for wave: Int) -> [EnemyKind] {
+        // Count grows by 1 every 2 waves past 3, starting at 5, capped to leave room for the player.
+        let maxEnemies = arenaSize - 2 // Cap count to leave the left cells clear; the `pos > 0` guard in spawnWave is the hard collision stop.
+        let count = min(maxEnemies, 5 + (wave - 4) / 2)
+
+        // As the wave climbs, lean harder on brutes and archers.
+        let tier = wave - 3
+        var kinds: [EnemyKind] = []
+        for i in 0..<count {
+            // Cycle a mix that gets meaner with the tier.
+            switch (i + tier) % 4 {
+            case 0: kinds.append(.brute)
+            case 1: kinds.append(.archer)
+            case 2: kinds.append(tier >= 3 ? .brute : .grunt)
+            default: kinds.append(.runner)
+            }
+        }
+        return kinds
     }
 
     func reset() {
+        // Restart the same mode.
         player = GameState.makePlayer()
         attackCost = 2
         wave = 1
+        score = 0
         phase = .playerTurn
         offeredUpgrades = []
         flashPositions = []
@@ -269,8 +314,7 @@ final class GameState: ObservableObject {
         runEnemyTurn()
 
         if !player.isAlive {
-            phase = .lost
-            message = "Game Over"
+            recordLoss()
             return
         }
 
@@ -280,12 +324,24 @@ final class GameState: ObservableObject {
         }
     }
 
+    /// Transition to the lost phase, persisting the Endless high score if beaten.
+    private func recordLoss() {
+        phase = .lost
+        message = "Game Over"
+        if mode == .endless && score > GameState.endlessHighScore {
+            UserDefaults.standard.set(score, forKey: GameState.endlessHighScoreKey)
+        }
+    }
+
     private func advanceWaveOrWin() {
-        if wave >= GameState.totalWaves {
+        // A wave was just fully cleared.
+        score += 1
+
+        if mode == .regular && wave >= GameState.totalWaves {
             phase = .won
             message = "You Win!"
         } else {
-            // Offer upgrades before spawning the next wave.
+            // Endless never wins; both modes offer upgrades before the next wave.
             offeredUpgrades = GameState.upgradePool().shuffled().prefix(3).map { $0 }
             phase = .choosingUpgrade
             message = "Choose an upgrade"

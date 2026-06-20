@@ -2,6 +2,9 @@
 
 All notable changes to Showdown.
 
+## v1.7.0 (build 10) — 2026-06-19
+- Main menu with Regular and Endless modes; endless escalating waves with a persistent waves-survived high score; Main Menu navigation
+
 ## v1.6.2 (build 9) — 2026-06-19
 - Show enemy remaining HP as a numeric badge above each enemy
 
