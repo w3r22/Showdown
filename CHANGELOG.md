@@ -2,6 +2,9 @@
 
 All notable changes to Showdown.
 
+## v1.4.0 (build 5) — 2026-06-19
+- Enemy variety: grunt/brute/runner/archer with distinct stats, AI (runner double-move, archer ranged line-of-fire) and sprites
+
 ## v1.3.0 (build 4) — 2026-06-19
 - Telegraphed enemy attacks: enemies wind up (⚠️) and strike next turn; threatened-cell highlight
 

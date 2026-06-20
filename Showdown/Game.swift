@@ -15,6 +15,10 @@ enum Phase {
     case lost
 }
 
+enum EnemyKind {
+    case grunt, brute, runner, archer
+}
+
 struct Combatant: Identifiable {
     let id = UUID()
     var isPlayer: Bool
@@ -24,6 +28,9 @@ struct Combatant: Identifiable {
     var position: Int
     var facing: Facing
 
+    // Enemy archetype (ignored for the player).
+    var kind: EnemyKind = .grunt
+
     // Stamina only meaningful for the player.
     var stamina: Int = 0
     var maxStamina: Int = 0
@@ -32,6 +39,21 @@ struct Combatant: Identifiable {
     var windingUp = false
 
     var isAlive: Bool { hp > 0 }
+
+    // Per-kind tactical ranges. Player values are unused.
+    var moveRange: Int {
+        switch kind {
+        case .grunt, .brute, .archer: return 1
+        case .runner: return 2
+        }
+    }
+
+    var attackRange: Int {
+        switch kind {
+        case .grunt, .brute, .runner: return 1
+        case .archer: return 3
+        }
+    }
 }
 
 // MARK: - Game state
@@ -74,17 +96,39 @@ final class GameState: ObservableObject {
                   stamina: 10, maxStamina: 10)
     }
 
+    /// Builds an enemy of the given kind, with its per-kind stats, against the right side.
+    static func makeEnemy(kind: EnemyKind, position: Int) -> Combatant {
+        let hp: Int
+        let atk: Int
+        switch kind {
+        case .grunt:  hp = 3; atk = 2
+        case .brute:  hp = 6; atk = 3
+        case .runner: hp = 2; atk = 1
+        case .archer: hp = 2; atk = 2
+        }
+        return Combatant(isPlayer: false,
+                         hp: hp, maxHP: hp,
+                         attack: atk,
+                         position: position,
+                         facing: .left,
+                         kind: kind)
+    }
+
     func spawnWave() {
-        // Spawn `wave + 1` enemies packed against the right wall, facing the player.
-        let count = wave + 1
+        // Escalating mix of kinds. Early waves stay gentle; later waves add specialists.
+        let kinds: [EnemyKind]
+        switch wave {
+        case 1:  kinds = [.grunt, .grunt]
+        case 2:  kinds = [.grunt, .grunt, .brute, .runner]
+        default: kinds = [.grunt, .brute, .runner, .archer]
+        }
+
+        // Pack against the right wall (rightmost first) without overlapping.
         var newEnemies: [Combatant] = []
-        for i in 0..<count {
+        for (i, kind) in kinds.enumerated() {
             let pos = GameState.arenaSize - 1 - i
-            newEnemies.append(Combatant(isPlayer: false,
-                                        hp: 3, maxHP: 3,
-                                        attack: 2,
-                                        position: pos,
-                                        facing: .left))
+            guard pos > 0 else { break }
+            newEnemies.append(GameState.makeEnemy(kind: kind, position: pos))
         }
         enemies = newEnemies
         message = "Wave \(wave) of \(GameState.totalWaves)"
@@ -194,8 +238,26 @@ final class GameState: ObservableObject {
         }
     }
 
-    /// Each enemy faces the player, then either resolves a telegraphed strike, winds up,
-    /// or advances one cell toward the player.
+    /// True if `attacker` can hit the player: the player is within `attackRange` along the
+    /// attacker's facing line, with no other combatant blocking the path (line-of-fire).
+    private func hasShot(_ attacker: Combatant) -> Bool {
+        let dir = attacker.facing.step
+        var pos = attacker.position + dir
+        var distance = 1
+        while distance <= attacker.attackRange {
+            guard pos >= 0 && pos < GameState.arenaSize else { return false }
+            if pos == player.position { return true }
+            // Any other combatant in the way blocks the line.
+            if occupant(at: pos) != nil { return false }
+            pos += dir
+            distance += 1
+        }
+        return false
+    }
+
+    /// Each enemy faces the player, then either resolves a telegraphed strike, winds up
+    /// (when it has a shot), or advances toward the player within its movement range.
+    /// Archers hold distance instead of closing once the player is in range.
     private func runEnemyTurn() {
         // Process nearest-to-player first so a line of enemies shuffles forward cleanly.
         let order = enemies.indices.sorted {
@@ -205,19 +267,33 @@ final class GameState: ObservableObject {
             guard enemies[i].isAlive else { continue }
             let dir: Facing = player.position < enemies[i].position ? .left : .right
             enemies[i].facing = dir
-            let ahead = enemies[i].position + dir.step
+
             if enemies[i].windingUp {
-                // Resolve the telegraphed strike: only lands if the player is still in front.
-                if ahead == player.position {
+                // Resolve the telegraphed strike: only lands if the player is still in range/line.
+                if hasShot(enemies[i]) {
                     player.hp -= enemies[i].attack
                     flash(player.position)
                 }
                 enemies[i].windingUp = false
-            } else if ahead == player.position {
-                // Telegraph: signal the strike this turn, deal no damage yet.
+                continue
+            }
+
+            if hasShot(enemies[i]) {
+                // In range with a clear line — telegraph; deal no damage yet.
                 enemies[i].windingUp = true
-            } else if isEmpty(ahead) {
+                continue
+            }
+
+            // Out of range: advance toward the player, up to moveRange cells. An archer that
+            // already has a shot wouldn't reach here; if it has none it closes like the rest.
+            var steps = enemies[i].moveRange
+            while steps > 0 {
+                let ahead = enemies[i].position + dir.step
+                guard isEmpty(ahead) else { break }
                 enemies[i].position = ahead
+                steps -= 1
+                // Stop early once a shot opens up, so a runner doesn't overrun the player.
+                if hasShot(enemies[i]) { break }
             }
         }
     }
