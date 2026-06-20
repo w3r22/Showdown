@@ -3,12 +3,13 @@ import SwiftUI
 struct GameView: View {
     @StateObject private var game = GameState()
 
+    // Transient player-attack animation (lunge offset + weapon swing).
+    @State private var attackLunge: CGFloat = 0
+    @State private var attackSwing: Double = 0
+
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color(red: 0.10, green: 0.12, blue: 0.18),
-                                    Color(red: 0.04, green: 0.05, blue: 0.09)],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+            background
 
             VStack(spacing: 24) {
                 header
@@ -22,6 +23,38 @@ struct GameView: View {
 
             if game.phase != .playerTurn {
                 overlay
+            }
+        }
+        .onChange(of: game.playerAttackPulse) { _, _ in
+            playAttackAnimation()
+        }
+    }
+
+    // MARK: Background
+
+    private var background: some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 0.12, green: 0.14, blue: 0.22),
+                                    Color(red: 0.05, green: 0.06, blue: 0.11),
+                                    Color(red: 0.02, green: 0.03, blue: 0.06)],
+                           startPoint: .top, endPoint: .bottom)
+            // Subtle vignette for depth.
+            RadialGradient(colors: [Color.clear, Color.black.opacity(0.55)],
+                           center: .center, startRadius: 120, endRadius: 520)
+        }
+        .ignoresSafeArea()
+    }
+
+    private func playAttackAnimation() {
+        let dir: CGFloat = game.player.facing == .right ? 1 : -1
+        withAnimation(.easeOut(duration: 0.09)) {
+            attackLunge = 10 * dir
+            attackSwing = 55 * dir
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                attackLunge = 0
+                attackSwing = 0
             }
         }
     }
@@ -56,13 +89,19 @@ struct GameView: View {
             let count = GameState.arenaSize
             let spacing: CGFloat = 3
             let cellW = (geo.size.width - spacing * CGFloat(count - 1)) / CGFloat(count)
-            HStack(spacing: spacing) {
-                ForEach(0..<count, id: \.self) { i in
-                    CellView(index: i,
-                             width: cellW,
-                             occupant: game.occupant(at: i),
-                             isTarget: game.facingTarget == i,
-                             isFlashing: game.flashPositions.contains(i))
+            ZStack(alignment: .bottom) {
+                DojoFloor(count: count, cellWidth: cellW, spacing: spacing,
+                          targetIndex: game.facingTarget)
+                HStack(spacing: spacing) {
+                    ForEach(0..<count, id: \.self) { i in
+                        CellView(index: i,
+                                 width: cellW,
+                                 occupant: game.occupant(at: i),
+                                 isTarget: game.facingTarget == i,
+                                 isFlashing: game.flashPositions.contains(i),
+                                 attackLunge: attackLunge,
+                                 attackSwing: attackSwing)
+                    }
                 }
             }
             .frame(maxHeight: .infinity, alignment: .center)
@@ -73,7 +112,7 @@ struct GameView: View {
                 }
             }
         }
-        .frame(height: 150)
+        .frame(height: 170)
     }
 
     // MARK: Controls
@@ -91,7 +130,7 @@ struct GameView: View {
                 }
             }
             HStack(spacing: 10) {
-                ActionButton(title: "Attack", systemImage: "burst.fill", subtitle: "3 dmg · −2 stam",
+                ActionButton(title: "Attack", systemImage: "bolt.fill", subtitle: "3 dmg · −2 stam",
                              tint: .red, enabled: game.canAttack) {
                     withAnimation(.easeInOut(duration: 0.18)) { game.playerAttack() }
                 }
@@ -144,6 +183,8 @@ struct CellView: View {
     let occupant: Combatant?
     let isTarget: Bool
     let isFlashing: Bool
+    var attackLunge: CGFloat = 0
+    var attackSwing: Double = 0
 
     var body: some View {
         VStack(spacing: 3) {
@@ -152,22 +193,15 @@ struct CellView: View {
                 .frame(height: 16)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(cellFill)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(isTarget ? Color.yellow.opacity(0.9) : Color.white.opacity(0.08),
-                                    lineWidth: isTarget ? 2 : 1)
-                    )
+                // Hit flash sits behind the fighter so the floor reads continuously.
+                if isFlashing {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.red.opacity(0.5))
+                }
                 sprite
             }
             .frame(width: width, height: width)
         }
-    }
-
-    private var cellFill: Color {
-        if isFlashing { return Color.red.opacity(0.55) }
-        return index.isMultiple(of: 2) ? Color.white.opacity(0.05) : Color.white.opacity(0.025)
     }
 
     @ViewBuilder private var barsArea: some View {
@@ -185,31 +219,136 @@ struct CellView: View {
 
     @ViewBuilder private var sprite: some View {
         if let c = occupant {
-            if c.isPlayer {
-                ZStack {
-                    Circle().fill(
-                        LinearGradient(colors: [Color(red: 0.35, green: 0.7, blue: 1.0),
-                                                Color(red: 0.1, green: 0.45, blue: 0.95)],
-                                       startPoint: .top, endPoint: .bottom))
-                    Image(systemName: c.facing == .right ? "chevron.right" : "chevron.left")
-                        .font(.system(size: width * 0.42, weight: .black))
-                        .foregroundStyle(.white)
-                        .offset(x: c.facing == .right ? width * 0.06 : -width * 0.06)
-                }
-                .padding(width * 0.14)
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 5).fill(
-                        LinearGradient(colors: [Color(red: 0.95, green: 0.4, blue: 0.4),
-                                                Color(red: 0.8, green: 0.15, blue: 0.2)],
-                                       startPoint: .top, endPoint: .bottom))
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: width * 0.34, weight: .black))
-                        .foregroundStyle(.white.opacity(0.9))
-                }
-                .padding(width * 0.18)
-            }
+            FighterSprite(isPlayer: c.isPlayer,
+                          facing: c.facing,
+                          width: width,
+                          lunge: c.isPlayer ? attackLunge : 0,
+                          swing: c.isPlayer ? attackSwing : 0)
         }
+    }
+}
+
+// MARK: - Fighter sprite (vector humanoid w/ katana)
+
+struct FighterSprite: View {
+    let isPlayer: Bool
+    let facing: Facing
+    let width: CGFloat
+    var lunge: CGFloat = 0
+    var swing: Double = 0
+
+    var body: some View {
+        let bodyGradient = LinearGradient(
+            colors: isPlayer
+                ? [Color(red: 0.45, green: 0.6, blue: 1.0), Color(red: 0.18, green: 0.28, blue: 0.85)]
+                : [Color(red: 0.98, green: 0.45, blue: 0.45), Color(red: 0.78, green: 0.12, blue: 0.18)],
+            startPoint: .top, endPoint: .bottom)
+        let limbColor = isPlayer ? Color(red: 0.28, green: 0.38, blue: 0.9)
+                                 : Color(red: 0.7, green: 0.16, blue: 0.2)
+        let headColor = isPlayer ? Color(red: 0.6, green: 0.72, blue: 1.0)
+                                 : Color(red: 1.0, green: 0.6, blue: 0.6)
+
+        ZStack {
+            // Grounding drop shadow.
+            Ellipse()
+                .fill(Color.black.opacity(0.35))
+                .frame(width: width * 0.62, height: width * 0.14)
+                .offset(y: width * 0.42)
+                .blur(radius: 1.5)
+
+            ZStack {
+                // Back leg.
+                Capsule()
+                    .fill(limbColor)
+                    .frame(width: width * 0.12, height: width * 0.30)
+                    .offset(x: -width * 0.08, y: width * 0.28)
+                // Front leg.
+                Capsule()
+                    .fill(limbColor)
+                    .frame(width: width * 0.12, height: width * 0.30)
+                    .offset(x: width * 0.10, y: width * 0.28)
+
+                // Torso.
+                RoundedRectangle(cornerRadius: width * 0.10)
+                    .fill(bodyGradient)
+                    .frame(width: width * 0.34, height: width * 0.42)
+                    .offset(y: width * 0.02)
+
+                // Head.
+                Circle()
+                    .fill(headColor)
+                    .frame(width: width * 0.26, height: width * 0.26)
+                    .offset(y: -width * 0.28)
+
+                // Forward arm + katana, anchored at the shoulder and swung on attack.
+                ZStack {
+                    // Arm.
+                    Capsule()
+                        .fill(limbColor)
+                        .frame(width: width * 0.11, height: width * 0.30)
+                        .offset(x: width * 0.12, y: width * 0.02)
+                    // Katana: thin angled blade pointing forward.
+                    Capsule()
+                        .fill(LinearGradient(colors: [Color.white, Color(white: 0.7)],
+                                             startPoint: .top, endPoint: .bottom))
+                        .frame(width: width * 0.055, height: width * 0.62)
+                        .rotationEffect(.degrees(55), anchor: .bottom)
+                        .offset(x: width * 0.30, y: -width * 0.06)
+                }
+                .rotationEffect(.degrees(swing), anchor: .center)
+            }
+            .frame(width: width, height: width)
+            .scaleEffect(x: facing == .left ? -1 : 1, y: 1)
+            .offset(x: lunge)
+        }
+    }
+}
+
+// MARK: - Dojo floor
+
+struct DojoFloor: View {
+    let count: Int
+    let cellWidth: CGFloat
+    let spacing: CGFloat
+    let targetIndex: Int
+
+    var body: some View {
+        let totalWidth = cellWidth * CGFloat(count) + spacing * CGFloat(count - 1)
+        ZStack(alignment: .bottom) {
+            // Continuous ground strip the fighters stand on.
+            RoundedRectangle(cornerRadius: 10)
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.22, green: 0.18, blue: 0.14),
+                             Color(red: 0.13, green: 0.10, blue: 0.08)],
+                    startPoint: .top, endPoint: .bottom))
+                .frame(width: totalWidth, height: cellWidth * 0.46)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
+
+            // Subtle tick marks delineating each of the 10 cells.
+            HStack(spacing: 0) {
+                ForEach(0..<count, id: \.self) { i in
+                    ZStack {
+                        if i == targetIndex {
+                            Rectangle()
+                                .fill(Color.yellow.opacity(0.18))
+                        }
+                        if i > 0 {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.10))
+                                .frame(width: 1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .frame(width: cellWidth + spacing)
+                }
+            }
+            .frame(width: totalWidth, height: cellWidth * 0.46, alignment: .leading)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .offset(y: -cellWidth * 0.02)
     }
 }
 
@@ -224,11 +363,14 @@ struct StatBar: View {
     var body: some View {
         let fraction = maxValue > 0 ? max(0, min(1, CGFloat(value) / CGFloat(maxValue))) : 0
         ZStack(alignment: .leading) {
-            Capsule().fill(Color.black.opacity(0.5))
-            Capsule().fill(color)
+            Capsule().fill(Color.black.opacity(0.55))
+            Capsule()
+                .fill(LinearGradient(colors: [color.opacity(0.95), color.opacity(0.7)],
+                                     startPoint: .top, endPoint: .bottom))
                 .frame(width: max(0, width * fraction))
         }
         .frame(width: width, height: 5)
+        .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
     }
 }
 
@@ -257,10 +399,22 @@ struct ActionButton: View {
                         .opacity(0.85)
                 }
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.white.opacity(enabled ? 1 : 0.5))
             .frame(maxWidth: .infinity)
             .frame(height: 60)
-            .background(tint.opacity(enabled ? 0.85 : 0.25), in: RoundedRectangle(cornerRadius: 14))
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(LinearGradient(
+                        colors: enabled
+                            ? [tint.opacity(0.95), tint.opacity(0.7)]
+                            : [Color.white.opacity(0.12), Color.white.opacity(0.06)],
+                        startPoint: .top, endPoint: .bottom))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(enabled ? 0.18 : 0.06), lineWidth: 1)
+            )
+            .shadow(color: enabled ? tint.opacity(0.35) : .clear, radius: 6, y: 3)
         }
         .disabled(!enabled)
     }
