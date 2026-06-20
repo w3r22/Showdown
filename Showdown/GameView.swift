@@ -135,11 +135,13 @@ struct GameView: View {
                     }
                 }
 
-                // Thrown shuriken: flies from the player's cell to the target cell.
-                if shurikenVisible {
-                    let stride = cellW + spacing
-                    let fromX = (CGFloat(shurikenFrom) + 0.5) * stride
-                    let toX = (CGFloat(shurikenTo) + 0.5) * stride
+                // Thrown shuriken: flies along the fighters' row from the player's cell to the target cell.
+                // Skip the zero-length case (throw into the wall: to == from) so it doesn't hover in place.
+                if shurikenVisible && shurikenTo != shurikenFrom {
+                    // True cell centers; the fighter square is bottom-aligned, so its vertical center
+                    // sits at geo.size.height - cellW/2.
+                    let fromX = CGFloat(shurikenFrom) * (cellW + spacing) + cellW / 2
+                    let toX = CGFloat(shurikenTo) * (cellW + spacing) + cellW / 2
                     let x = fromX + (toX - fromX) * shurikenProgress
                     ShurikenShape()
                         .fill(LinearGradient(colors: [Color.white, Color(white: 0.6)],
@@ -147,7 +149,7 @@ struct GameView: View {
                         .frame(width: cellW * 0.34, height: cellW * 0.34)
                         .rotationEffect(.degrees(shurikenSpin))
                         .shadow(color: .black.opacity(0.5), radius: 1)
-                        .position(x: x, y: cellW * 0.5)
+                        .position(x: x, y: geo.size.height - cellW / 2)
                         .allowsHitTesting(false)
                 }
             }

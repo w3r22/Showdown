@@ -2,6 +2,9 @@
 
 All notable changes to Showdown.
 
+## v1.6.1 (build 8) — 2026-06-19
+- Fix thrown shuriken to fly along the fighter row to its target (was rendering at the top of the arena)
+
 ## v1.6.0 (build 7) — 2026-06-19
 - Between-wave upgrades: pick 1 of 3 (max HP/attack/stamina/cheaper attacks/full heal) after each cleared wave
 
