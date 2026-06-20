@@ -7,6 +7,13 @@ struct GameView: View {
     @State private var attackLunge: CGFloat = 0
     @State private var attackSwing: Double = 0
 
+    // Transient thrown-shuriken animation: cell indices to fly between + progress/spin/visibility.
+    @State private var shurikenFrom: Int = 0
+    @State private var shurikenTo: Int = 0
+    @State private var shurikenProgress: CGFloat = 0
+    @State private var shurikenSpin: Double = 0
+    @State private var shurikenVisible: Bool = false
+
     var body: some View {
         ZStack {
             background
@@ -27,6 +34,9 @@ struct GameView: View {
         }
         .onChange(of: game.playerAttackPulse) { _, _ in
             playAttackAnimation()
+        }
+        .onChange(of: game.throwPulse) { _, _ in
+            playThrowAnimation()
         }
     }
 
@@ -56,6 +66,26 @@ struct GameView: View {
                 attackLunge = 0
                 attackSwing = 0
             }
+        }
+    }
+
+    private func playThrowAnimation() {
+        guard let t = game.lastThrow else { return }
+        // A brief throw lunge for feel, mirroring the melee swing.
+        playAttackAnimation()
+
+        shurikenFrom = t.from
+        shurikenTo = t.to
+        shurikenProgress = 0
+        shurikenSpin = 0
+        shurikenVisible = true
+        // Fly across and spin; then vanish.
+        withAnimation(.easeOut(duration: 0.25)) {
+            shurikenProgress = 1
+            shurikenSpin = 720
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            shurikenVisible = false
         }
     }
 
@@ -104,6 +134,22 @@ struct GameView: View {
                                  attackSwing: attackSwing)
                     }
                 }
+
+                // Thrown shuriken: flies from the player's cell to the target cell.
+                if shurikenVisible {
+                    let stride = cellW + spacing
+                    let fromX = (CGFloat(shurikenFrom) + 0.5) * stride
+                    let toX = (CGFloat(shurikenTo) + 0.5) * stride
+                    let x = fromX + (toX - fromX) * shurikenProgress
+                    ShurikenShape()
+                        .fill(LinearGradient(colors: [Color.white, Color(white: 0.6)],
+                                             startPoint: .top, endPoint: .bottom))
+                        .frame(width: cellW * 0.34, height: cellW * 0.34)
+                        .rotationEffect(.degrees(shurikenSpin))
+                        .shadow(color: .black.opacity(0.5), radius: 1)
+                        .position(x: x, y: cellW * 0.5)
+                        .allowsHitTesting(false)
+                }
             }
             .frame(maxHeight: .infinity, alignment: .center)
             .onChange(of: game.flashPositions) { _, new in
@@ -135,15 +181,21 @@ struct GameView: View {
                              tint: .red, enabled: game.canAttack) {
                     withAnimation(.easeInOut(duration: 0.18)) { game.playerAttack() }
                 }
+                ActionButton(title: "Throw", systemImage: "staroflife.fill", subtitle: "2 dmg · −3 stam",
+                             tint: .purple, enabled: game.canThrow) {
+                    withAnimation(.easeInOut(duration: 0.18)) { game.throwShuriken() }
+                }
+            }
+            HStack(spacing: 10) {
                 ActionButton(title: "Skip", systemImage: "hourglass", subtitle: "+3 stam",
                              tint: .green, enabled: game.phase == .playerTurn) {
                     withAnimation(.easeInOut(duration: 0.18)) { game.skipTurn() }
                 }
-            }
-            ActionButton(title: "Turn around", systemImage: "arrow.left.arrow.right",
-                         subtitle: "free · 0 turns",
-                         tint: .orange, enabled: game.phase == .playerTurn, wide: true) {
-                withAnimation(.easeInOut(duration: 0.18)) { game.turnPlayer() }
+                ActionButton(title: "Turn", systemImage: "arrow.left.arrow.right",
+                             subtitle: "free · 0 turns",
+                             tint: .orange, enabled: game.phase == .playerTurn) {
+                    withAnimation(.easeInOut(duration: 0.18)) { game.turnPlayer() }
+                }
             }
         }
     }
@@ -400,6 +452,26 @@ struct FighterSprite: View {
             }
             .rotationEffect(.degrees(swing), anchor: .center)
         }
+    }
+}
+
+// A four-pointed throwing star (shuriken) inscribed in the bounding rect.
+struct ShurikenShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        let outer = min(rect.width, rect.height) / 2
+        let inner = outer * 0.38
+        let points = 4
+        for i in 0..<(points * 2) {
+            let radius = i.isMultiple(of: 2) ? outer : inner
+            let angle = (Double(i) / Double(points * 2)) * 2 * .pi - .pi / 2
+            let pt = CGPoint(x: c.x + radius * cos(CGFloat(angle)),
+                             y: c.y + radius * sin(CGFloat(angle)))
+            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+        }
+        p.closeSubpath()
+        return p
     }
 }
 
