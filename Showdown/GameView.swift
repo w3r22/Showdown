@@ -34,10 +34,19 @@ struct GameView: View {
                 .font(.system(size: 30, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .tracking(4)
+            if let appVersion {
+                Text("v\(appVersion)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
             Text("Wave \(game.wave) of \(GameState.totalWaves)")
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.6))
         }
+    }
+
+    private var appVersion: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
 
     // MARK: Arena
