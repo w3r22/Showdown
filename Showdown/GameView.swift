@@ -99,6 +99,7 @@ struct GameView: View {
                                  occupant: game.occupant(at: i),
                                  isTarget: game.facingTarget == i,
                                  isFlashing: game.flashPositions.contains(i),
+                                 isThreatened: game.threatenedCell == i,
                                  attackLunge: attackLunge,
                                  attackSwing: attackSwing)
                     }
@@ -183,8 +184,12 @@ struct CellView: View {
     let occupant: Combatant?
     let isTarget: Bool
     let isFlashing: Bool
+    var isThreatened: Bool = false
     var attackLunge: CGFloat = 0
     var attackSwing: Double = 0
+
+    // Drives the pulsing telegraph indicators.
+    @State private var pulse = false
 
     var body: some View {
         VStack(spacing: 3) {
@@ -198,9 +203,33 @@ struct CellView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.red.opacity(0.5))
                 }
+                // Threatened cell: pulsing red outline distinct from the yellow facing target.
+                if isThreatened {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.red.opacity(pulse ? 0.95 : 0.4), lineWidth: 2.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.red.opacity(0.15))
+                        )
+                }
                 sprite
+
+                // Wind-up telegraph: warning badge floating above a winding-up enemy.
+                if let c = occupant, c.windingUp {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: width * 0.30, weight: .bold))
+                        .foregroundStyle(.yellow)
+                        .shadow(color: .red.opacity(0.9), radius: 3)
+                        .scaleEffect(pulse ? 1.15 : 0.9)
+                        .offset(y: -width * 0.52)
+                }
             }
             .frame(width: width, height: width)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
         }
     }
 

@@ -2,6 +2,9 @@
 
 All notable changes to Showdown.
 
+## v1.3.0 (build 4) — 2026-06-19
+- Telegraphed enemy attacks: enemies wind up (⚠️) and strike next turn; threatened-cell highlight
+
 ## v1.2.0 (build 3) — 2026-06-19
 - Visual refresh: humanoid vector fighters on a dojo floor, attack lunge animation, polished background/bars/buttons
 
