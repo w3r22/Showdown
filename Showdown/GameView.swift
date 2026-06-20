@@ -202,7 +202,15 @@ struct GameView: View {
 
     // MARK: Overlay
 
-    private var overlay: some View {
+    @ViewBuilder private var overlay: some View {
+        if game.phase == .choosingUpgrade {
+            upgradeOverlay
+        } else {
+            endOverlay
+        }
+    }
+
+    private var endOverlay: some View {
         ZStack {
             Color.black.opacity(0.6).ignoresSafeArea()
             VStack(spacing: 18) {
@@ -225,6 +233,61 @@ struct GameView: View {
             .padding(40)
         }
         .transition(.opacity)
+    }
+
+    private var upgradeOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+            VStack(spacing: 18) {
+                Text("Choose an upgrade")
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("Wave \(game.wave) cleared")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.6))
+                VStack(spacing: 12) {
+                    ForEach(game.offeredUpgrades) { upgrade in
+                        Button {
+                            withAnimation { game.chooseUpgrade(upgrade) }
+                        } label: {
+                            UpgradeCard(upgrade: upgrade)
+                        }
+                    }
+                }
+            }
+            .padding(32)
+        }
+        .transition(.opacity)
+    }
+}
+
+// MARK: - Upgrade card
+
+struct UpgradeCard: View {
+    let upgrade: Upgrade
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(upgrade.title)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+            Text(upgrade.detail)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(LinearGradient(colors: [Color.indigo.opacity(0.85), Color.indigo.opacity(0.55)],
+                                     startPoint: .top, endPoint: .bottom))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 
