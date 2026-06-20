@@ -2,6 +2,9 @@
 
 All notable changes to Showdown.
 
+## v1.2.0 (build 3) — 2026-06-19
+- Visual refresh: humanoid vector fighters on a dojo floor, attack lunge animation, polished background/bars/buttons
+
 ## v1.1.0 (build 2) — 2026-06-19
 - Show app version label under the SHOWDOWN title (reads CFBundleShortVersionString)
 

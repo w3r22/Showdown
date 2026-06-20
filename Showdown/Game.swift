@@ -52,6 +52,9 @@ final class GameState: ObservableObject {
     @Published var flashPositions: Set<Int> = []
     @Published var message: String = ""
 
+    // Increments whenever the player attacks, so the UI can play a lunge/swing.
+    @Published private(set) var playerAttackPulse: Int = 0
+
     init() {
         player = GameState.makePlayer()
         spawnWave()
@@ -129,6 +132,7 @@ final class GameState: ObservableObject {
 
     func playerAttack() {
         guard canAttack else { return }
+        playerAttackPulse &+= 1
         player.stamina -= GameState.attackCost
         let target = facingTarget
         if let idx = enemies.firstIndex(where: { $0.isAlive && $0.position == target }) {
