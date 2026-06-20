@@ -11,8 +11,19 @@ enum Facing {
 
 enum Phase {
     case playerTurn
+    case choosingUpgrade
     case won
     case lost
+}
+
+// MARK: - Upgrades
+
+/// A between-wave upgrade the player can pick. Closure-based so the model stays Foundation-only.
+struct Upgrade: Identifiable {
+    let id = UUID()
+    let title: String
+    let detail: String
+    let apply: (GameState) -> Void
 }
 
 enum EnemyKind {
@@ -63,17 +74,22 @@ final class GameState: ObservableObject {
     static let arenaSize = 10
 
     // Stamina economy
-    static let attackCost = 2
     static let throwCost = 3
     static let throwDamage = 2
     static let moveGain = 1
     static let skipGain = 3
     static let totalWaves = 3
 
+    // Instance so it can be lowered by an upgrade.
+    @Published private(set) var attackCost = 2
+
     @Published private(set) var player: Combatant
     @Published private(set) var enemies: [Combatant] = []
     @Published private(set) var wave: Int = 1
     @Published private(set) var phase: Phase = .playerTurn
+
+    // The 3 upgrades offered between waves (populated when phase == .choosingUpgrade).
+    @Published private(set) var offeredUpgrades: [Upgrade] = []
 
     // Transient feedback for the UI (cells that just got hit, last log line).
     @Published var flashPositions: Set<Int> = []
@@ -143,8 +159,10 @@ final class GameState: ObservableObject {
 
     func reset() {
         player = GameState.makePlayer()
+        attackCost = 2
         wave = 1
         phase = .playerTurn
+        offeredUpgrades = []
         flashPositions = []
         spawnWave()
     }
@@ -168,7 +186,7 @@ final class GameState: ObservableObject {
         enemies.contains { $0.isAlive && $0.windingUp } ? player.position : nil
     }
 
-    var canAttack: Bool { phase == .playerTurn && player.stamina >= GameState.attackCost }
+    var canAttack: Bool { phase == .playerTurn && player.stamina >= attackCost }
 
     var canThrow: Bool { phase == .playerTurn && player.stamina >= GameState.throwCost }
 
@@ -194,7 +212,7 @@ final class GameState: ObservableObject {
     func playerAttack() {
         guard canAttack else { return }
         playerAttackPulse &+= 1
-        player.stamina -= GameState.attackCost
+        player.stamina -= attackCost
         let target = facingTarget
         if let idx = enemies.firstIndex(where: { $0.isAlive && $0.position == target }) {
             enemies[idx].hp -= player.attack
@@ -267,9 +285,46 @@ final class GameState: ObservableObject {
             phase = .won
             message = "You Win!"
         } else {
-            wave += 1
-            spawnWave()
+            // Offer upgrades before spawning the next wave.
+            offeredUpgrades = GameState.upgradePool().shuffled().prefix(3).map { $0 }
+            phase = .choosingUpgrade
+            message = "Choose an upgrade"
         }
+    }
+
+    // MARK: Upgrades
+
+    /// The full pool of between-wave upgrades. Three are sampled at random each time.
+    private static func upgradePool() -> [Upgrade] {
+        [
+            Upgrade(title: "+2 Max HP", detail: "Raise max HP by 2 and heal 2.") { game in
+                game.player.maxHP += 2
+                game.player.hp = min(game.player.maxHP, game.player.hp + 2)
+            },
+            Upgrade(title: "+1 Attack", detail: "Melee hits deal 1 more damage.") { game in
+                game.player.attack += 1
+            },
+            Upgrade(title: "+2 Max Stamina", detail: "Raise max stamina by 2 and gain 2.") { game in
+                game.player.maxStamina += 2
+                game.player.stamina = min(game.player.maxStamina, game.player.stamina + 2)
+            },
+            Upgrade(title: "Cheaper Attacks", detail: "Attack stamina cost −1 (min 1).") { game in
+                game.attackCost = max(1, game.attackCost - 1)
+            },
+            Upgrade(title: "Full Heal", detail: "Restore HP to full.") { game in
+                game.player.hp = game.player.maxHP
+            },
+        ]
+    }
+
+    /// Apply the chosen upgrade, then spawn the next wave and resume play.
+    func chooseUpgrade(_ upgrade: Upgrade) {
+        guard phase == .choosingUpgrade else { return }
+        upgrade.apply(self)
+        offeredUpgrades = []
+        wave += 1
+        spawnWave()
+        phase = .playerTurn
     }
 
     /// True if `attacker` can hit the player: the player is within `attackRange` along the

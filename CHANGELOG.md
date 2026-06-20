@@ -2,6 +2,9 @@
 
 All notable changes to Showdown.
 
+## v1.6.0 (build 7) — 2026-06-19
+- Between-wave upgrades: pick 1 of 3 (max HP/attack/stamina/cheaper attacks/full heal) after each cleared wave
+
 ## v1.5.0 (build 6) — 2026-06-19
 - Ranged shuriken Throw action (2 dmg, -3 stamina) with projectile animation; controls reorganized into 3 rows
 
