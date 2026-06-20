@@ -312,7 +312,7 @@ struct CellView: View {
         VStack(spacing: 3) {
             // Floating bars area above the sprite.
             barsArea
-                .frame(height: 16)
+                .frame(height: 24)
 
             ZStack {
                 // Hit flash sits behind the fighter so the floor reads continuously.
@@ -353,9 +353,21 @@ struct CellView: View {
     @ViewBuilder private var barsArea: some View {
         if let c = occupant {
             VStack(spacing: 2) {
-                StatBar(value: c.hp, maxValue: c.maxHP, color: .red, width: width)
                 if c.isPlayer {
+                    StatBar(value: c.hp, maxValue: c.maxHP, color: .red, width: width)
                     StatBar(value: c.stamina, maxValue: c.maxStamina, color: .yellow, width: width)
+                } else {
+                    // Enemies: HP shown as a legible number in a dark pill, with a slim red bar.
+                    Text("\(c.hp)")
+                        .font(.system(size: width * 0.34, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule().fill(Color.black.opacity(0.7))
+                        )
+                        .shadow(color: .black.opacity(0.6), radius: 1)
+                    StatBar(value: c.hp, maxValue: c.maxHP, color: .red, width: width)
                 }
             }
         } else {

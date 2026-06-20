@@ -2,6 +2,9 @@
 
 All notable changes to Showdown.
 
+## v1.6.2 (build 9) — 2026-06-19
+- Show enemy remaining HP as a numeric badge above each enemy
+
 ## v1.6.1 (build 8) — 2026-06-19
 - Fix thrown shuriken to fly along the fighter row to its target (was rendering at the top of the arena)
 
