@@ -28,6 +28,9 @@ struct Combatant: Identifiable {
     var stamina: Int = 0
     var maxStamina: Int = 0
 
+    // Enemy telegraph: true after the enemy winds up, before the strike resolves.
+    var windingUp = false
+
     var isAlive: Bool { hp > 0 }
 }
 
@@ -109,6 +112,11 @@ final class GameState: ObservableObject {
 
     var facingTarget: Int { player.position + player.facing.step }
 
+    /// The player's cell while any alive enemy is winding up to strike, else nil.
+    var threatenedCell: Int? {
+        enemies.contains { $0.isAlive && $0.windingUp } ? player.position : nil
+    }
+
     var canAttack: Bool { phase == .playerTurn && player.stamina >= GameState.attackCost }
 
     func canMove(_ facing: Facing) -> Bool {
@@ -186,7 +194,8 @@ final class GameState: ObservableObject {
         }
     }
 
-    /// Each enemy faces the player, attacks if adjacent, otherwise advances one cell toward them.
+    /// Each enemy faces the player, then either resolves a telegraphed strike, winds up,
+    /// or advances one cell toward the player.
     private func runEnemyTurn() {
         // Process nearest-to-player first so a line of enemies shuffles forward cleanly.
         let order = enemies.indices.sorted {
@@ -197,9 +206,16 @@ final class GameState: ObservableObject {
             let dir: Facing = player.position < enemies[i].position ? .left : .right
             enemies[i].facing = dir
             let ahead = enemies[i].position + dir.step
-            if ahead == player.position {
-                player.hp -= enemies[i].attack
-                flash(player.position)
+            if enemies[i].windingUp {
+                // Resolve the telegraphed strike: only lands if the player is still in front.
+                if ahead == player.position {
+                    player.hp -= enemies[i].attack
+                    flash(player.position)
+                }
+                enemies[i].windingUp = false
+            } else if ahead == player.position {
+                // Telegraph: signal the strike this turn, deal no damage yet.
+                enemies[i].windingUp = true
             } else if isEmpty(ahead) {
                 enemies[i].position = ahead
             }
