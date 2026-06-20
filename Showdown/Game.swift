@@ -64,6 +64,8 @@ final class GameState: ObservableObject {
 
     // Stamina economy
     static let attackCost = 2
+    static let throwCost = 3
+    static let throwDamage = 2
     static let moveGain = 1
     static let skipGain = 3
     static let totalWaves = 3
@@ -79,6 +81,11 @@ final class GameState: ObservableObject {
 
     // Increments whenever the player attacks, so the UI can play a lunge/swing.
     @Published private(set) var playerAttackPulse: Int = 0
+
+    // Increments whenever the player throws, so the UI can fly a projectile.
+    @Published private(set) var throwPulse: Int = 0
+    // The cells the last thrown shuriken traveled between (from player, to target/wall).
+    @Published private(set) var lastThrow: (from: Int, to: Int)? = nil
 
     init() {
         player = GameState.makePlayer()
@@ -163,6 +170,8 @@ final class GameState: ObservableObject {
 
     var canAttack: Bool { phase == .playerTurn && player.stamina >= GameState.attackCost }
 
+    var canThrow: Bool { phase == .playerTurn && player.stamina >= GameState.throwCost }
+
     func canMove(_ facing: Facing) -> Bool {
         phase == .playerTurn && isEmpty(player.position + facing.step)
     }
@@ -191,6 +200,31 @@ final class GameState: ObservableObject {
             enemies[idx].hp -= player.attack
             flash(target)
         }
+        endPlayerTurn()
+    }
+
+    /// Ranged attack: spend stamina, fly a shuriken along the facing line and hit the first
+    /// alive enemy it reaches (cosmetically traveling to the wall if it hits nothing).
+    func throwShuriken() {
+        guard canThrow else { return }
+        player.stamina -= GameState.throwCost
+
+        let dir = player.facing.step
+        var pos = player.position + dir
+        var target = player.position
+        // Default cosmetic target: the last in-bounds cell along the facing direction.
+        while pos >= 0 && pos < GameState.arenaSize {
+            target = pos
+            if let idx = enemies.firstIndex(where: { $0.isAlive && $0.position == pos }) {
+                enemies[idx].hp -= GameState.throwDamage
+                flash(pos)
+                break
+            }
+            pos += dir
+        }
+
+        lastThrow = (from: player.position, to: target)
+        throwPulse &+= 1
         endPlayerTurn()
     }
 
