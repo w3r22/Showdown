@@ -249,6 +249,7 @@ struct CellView: View {
     @ViewBuilder private var sprite: some View {
         if let c = occupant {
             FighterSprite(isPlayer: c.isPlayer,
+                          kind: c.kind,
                           facing: c.facing,
                           width: width,
                           lunge: c.isPlayer ? attackLunge : 0,
@@ -261,22 +262,63 @@ struct CellView: View {
 
 struct FighterSprite: View {
     let isPlayer: Bool
+    var kind: EnemyKind = .grunt
     let facing: Facing
     let width: CGFloat
     var lunge: CGFloat = 0
     var swing: Double = 0
 
-    var body: some View {
-        let bodyGradient = LinearGradient(
-            colors: isPlayer
-                ? [Color(red: 0.45, green: 0.6, blue: 1.0), Color(red: 0.18, green: 0.28, blue: 0.85)]
-                : [Color(red: 0.98, green: 0.45, blue: 0.45), Color(red: 0.78, green: 0.12, blue: 0.18)],
-            startPoint: .top, endPoint: .bottom)
-        let limbColor = isPlayer ? Color(red: 0.28, green: 0.38, blue: 0.9)
-                                 : Color(red: 0.7, green: 0.16, blue: 0.2)
-        let headColor = isPlayer ? Color(red: 0.6, green: 0.72, blue: 1.0)
-                                 : Color(red: 1.0, green: 0.6, blue: 0.6)
+    // Per-kind body scale: brutes are bulkier, runners leaner/smaller.
+    private var bodyScale: CGFloat {
+        guard !isPlayer else { return 1 }
+        switch kind {
+        case .grunt:  return 1.0
+        case .brute:  return 1.22
+        case .runner: return 0.84
+        case .archer: return 0.92
+        }
+    }
 
+    private var bodyGradient: LinearGradient {
+        let colors: [Color]
+        if isPlayer {
+            colors = [Color(red: 0.45, green: 0.6, blue: 1.0), Color(red: 0.18, green: 0.28, blue: 0.85)]
+        } else {
+            switch kind {
+            case .grunt:
+                colors = [Color(red: 0.98, green: 0.45, blue: 0.45), Color(red: 0.78, green: 0.12, blue: 0.18)]
+            case .brute: // darker, heavier red
+                colors = [Color(red: 0.72, green: 0.20, blue: 0.22), Color(red: 0.45, green: 0.05, blue: 0.08)]
+            case .runner: // orange, agile
+                colors = [Color(red: 1.0, green: 0.62, blue: 0.30), Color(red: 0.85, green: 0.35, blue: 0.08)]
+            case .archer: // magenta/violet, ranged
+                colors = [Color(red: 0.85, green: 0.45, blue: 0.85), Color(red: 0.55, green: 0.12, blue: 0.5)]
+            }
+        }
+        return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+    }
+
+    private var limbColor: Color {
+        guard !isPlayer else { return Color(red: 0.28, green: 0.38, blue: 0.9) }
+        switch kind {
+        case .grunt:  return Color(red: 0.7, green: 0.16, blue: 0.2)
+        case .brute:  return Color(red: 0.4, green: 0.06, blue: 0.08)
+        case .runner: return Color(red: 0.8, green: 0.32, blue: 0.06)
+        case .archer: return Color(red: 0.5, green: 0.1, blue: 0.45)
+        }
+    }
+
+    private var headColor: Color {
+        guard !isPlayer else { return Color(red: 0.6, green: 0.72, blue: 1.0) }
+        switch kind {
+        case .grunt:  return Color(red: 1.0, green: 0.6, blue: 0.6)
+        case .brute:  return Color(red: 0.9, green: 0.5, blue: 0.5)
+        case .runner: return Color(red: 1.0, green: 0.78, blue: 0.5)
+        case .archer: return Color(red: 1.0, green: 0.7, blue: 1.0)
+        }
+    }
+
+    var body: some View {
         ZStack {
             // Grounding drop shadow.
             Ellipse()
@@ -309,27 +351,66 @@ struct FighterSprite: View {
                     .frame(width: width * 0.26, height: width * 0.26)
                     .offset(y: -width * 0.28)
 
-                // Forward arm + katana, anchored at the shoulder and swung on attack.
-                ZStack {
-                    // Arm.
-                    Capsule()
-                        .fill(limbColor)
-                        .frame(width: width * 0.11, height: width * 0.30)
-                        .offset(x: width * 0.12, y: width * 0.02)
-                    // Katana: thin angled blade pointing forward.
-                    Capsule()
-                        .fill(LinearGradient(colors: [Color.white, Color(white: 0.7)],
-                                             startPoint: .top, endPoint: .bottom))
-                        .frame(width: width * 0.055, height: width * 0.62)
-                        .rotationEffect(.degrees(55), anchor: .bottom)
-                        .offset(x: width * 0.30, y: -width * 0.06)
-                }
-                .rotationEffect(.degrees(swing), anchor: .center)
+                weapon
             }
             .frame(width: width, height: width)
+            .scaleEffect(bodyScale)
             .scaleEffect(x: facing == .left ? -1 : 1, y: 1)
             .offset(x: lunge)
         }
+    }
+
+    // Player + melee enemies wield a katana; archers hold a bow instead.
+    @ViewBuilder private var weapon: some View {
+        if !isPlayer && kind == .archer {
+            // Forward arm + bow (an arc) drawn ahead of the body.
+            ZStack {
+                Capsule()
+                    .fill(limbColor)
+                    .frame(width: width * 0.11, height: width * 0.30)
+                    .offset(x: width * 0.12, y: width * 0.02)
+                BowArc()
+                    .stroke(LinearGradient(colors: [Color(white: 0.95), Color(red: 0.7, green: 0.5, blue: 0.3)],
+                                           startPoint: .top, endPoint: .bottom),
+                            style: StrokeStyle(lineWidth: width * 0.05, lineCap: .round))
+                    .frame(width: width * 0.30, height: width * 0.66)
+                    .offset(x: width * 0.30, y: -width * 0.02)
+                // Bowstring.
+                Rectangle()
+                    .fill(Color.white.opacity(0.7))
+                    .frame(width: width * 0.012, height: width * 0.60)
+                    .offset(x: width * 0.30, y: -width * 0.02)
+            }
+            .rotationEffect(.degrees(swing), anchor: .center)
+        } else {
+            // Forward arm + katana, anchored at the shoulder and swung on attack.
+            ZStack {
+                // Arm.
+                Capsule()
+                    .fill(limbColor)
+                    .frame(width: width * 0.11, height: width * 0.30)
+                    .offset(x: width * 0.12, y: width * 0.02)
+                // Katana: thin angled blade pointing forward.
+                Capsule()
+                    .fill(LinearGradient(colors: [Color.white, Color(white: 0.7)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .frame(width: width * 0.055, height: width * 0.62)
+                    .rotationEffect(.degrees(55), anchor: .bottom)
+                    .offset(x: width * 0.30, y: -width * 0.06)
+            }
+            .rotationEffect(.degrees(swing), anchor: .center)
+        }
+    }
+}
+
+// A simple bow: a vertical arc bowing forward (to the right).
+struct BowArc: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY),
+                       control: CGPoint(x: rect.maxX * 1.6, y: rect.midY))
+        return p
     }
 }
 
