@@ -1,7 +1,13 @@
 import SwiftUI
 
 struct GameView: View {
-    @StateObject private var game = GameState()
+    @StateObject private var game: GameState
+    private let onExit: () -> Void
+
+    init(mode: GameMode = .regular, onExit: @escaping () -> Void = {}) {
+        _game = StateObject(wrappedValue: GameState(mode: mode))
+        self.onExit = onExit
+    }
 
     // Transient player-attack animation (lunge offset + weapon swing).
     @State private var attackLunge: CGFloat = 0
@@ -102,7 +108,9 @@ struct GameView: View {
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.4))
             }
-            Text("Wave \(game.wave) of \(GameState.totalWaves)")
+            Text(game.mode == .endless
+                 ? "Wave \(game.wave)"
+                 : "Wave \(game.wave) of \(GameState.totalWaves)")
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.6))
         }
@@ -221,16 +229,44 @@ struct GameView: View {
                 Text(game.phase == .won ? "You Win!" : "Game Over")
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
-                Button {
-                    withAnimation { game.reset() }
-                } label: {
-                    Text("Play Again")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 14)
-                        .background(.white, in: Capsule())
+
+                // Endless runs only end at a loss; show the run + best.
+                if game.mode == .endless && game.phase == .lost {
+                    VStack(spacing: 4) {
+                        Text("Waves survived: \(game.score)")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                        Text("Best: \(GameState.endlessHighScore)")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
                 }
+
+                VStack(spacing: 12) {
+                    Button {
+                        withAnimation { game.reset() }
+                    } label: {
+                        Text("Play Again")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(.white, in: Capsule())
+                    }
+                    Button {
+                        withAnimation { onExit() }
+                    } label: {
+                        Text("Main Menu")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                Capsule().stroke(Color.white.opacity(0.5), lineWidth: 1.5)
+                            )
+                    }
+                }
+                .frame(maxWidth: 240)
             }
             .padding(40)
         }

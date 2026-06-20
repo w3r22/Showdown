@@ -4,7 +4,7 @@ import SwiftUI
 struct ShowdownApp: App {
     var body: some Scene {
         WindowGroup {
-            GameView()
+            RootView()
         }
     }
 }
